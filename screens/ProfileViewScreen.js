@@ -35,14 +35,21 @@ const ProfileView = () => {
     const user = firebase.auth().currentUser;
     const profileRef = firestore.collection("users").doc(user.uid);
 
-    const handleData = (snapshot) => {
+    const handleData = async (snapshot) => {
       const data = snapshot.data();
       setName(data.name);
       setAge(data.age);
-      setImage(data.photoURL.uri);
-      setStoryImage(data.story);
-    };
+      setImage(data.photoURL);
+      console.log("Fetched image:", data.photoURL);
 
+      // Fetch story image from "sharedStories" collection
+      const storyDocRef = firestore.collection("sharedStories").doc(user.uid);
+      const storyDoc = await storyDocRef.get();
+      if (storyDoc.exists) {
+        const storyData = storyDoc.data();
+        setStoryImage(storyData.story);
+      }
+    };
     profileRef
       .get()
       .then(handleData)
@@ -59,8 +66,13 @@ const ProfileView = () => {
     navigation.navigate("Edit");
   };
 
-  const handleLeftButtonPress = () => {
-    navigation.navigate("Edit");
+  const handleSignOut = async () => {
+    try {
+      await firebase.auth().signOut();
+      navigation.navigate("Login");
+    } catch (error) {
+      console.log("Error signing out:", error);
+    }
   };
 
   const handleMiddleButtonPress = () => {
@@ -83,7 +95,7 @@ const ProfileView = () => {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Header
-        handleLeft={handleLeftButtonPress}
+        handleLeft={handleEditButtonPress}
         handleMiddle={handleMiddleButtonPress}
         handleRight={handleRightButtonPress}
       />
@@ -98,14 +110,15 @@ const ProfileView = () => {
             <Image source={{ uri: storyImage }} style={styles.storyImage} />
           </TouchableOpacity>
         ) : null}
-        <Text style={styles.name}>{name}</Text>
-        <Text style={styles.age}>{age} years old</Text>
       </View>
       <TouchableOpacity
-        style={styles.matchesButton}
+        style={styles.editButton}
         onPress={handleEditButtonPress}
       >
-        <Text style={styles.matchesButtonText}>Edit Profile</Text>
+        <Text style={styles.editButtonText}>Edit Profile</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.signoutButton} onPress={handleSignOut}>
+        <Text style={styles.signoutButtonText}>Sign Out</Text>
       </TouchableOpacity>
 
       <Modal
@@ -162,16 +175,43 @@ const styles = StyleSheet.create({
     color: "gray",
     color: "white",
   },
-  matchesButton: {
-    backgroundColor: "blue",
-    padding: 16,
+  editButton: {
+    backgroundColor: "black",
+    padding: 12,
     alignItems: "center",
     borderRadius: 8,
-    marginBottom: 32,
+    marginBottom: 16,
+    shadowColor: "gold",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  matchesButtonText: {
-    color: "white",
-    fontSize: 18,
+  editButtonText: {
+    color: "gold",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  signoutButton: {
+    backgroundColor: "black",
+    padding: 12,
+    alignItems: "center",
+    borderRadius: 8,
+    shadowColor: "red",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  signoutButtonText: {
+    color: "red",
+    fontSize: 16,
     fontWeight: "bold",
   },
   modalContainer: {

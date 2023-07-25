@@ -226,7 +226,7 @@ const RequestDetailScreen = ({ route }) => {
   return (
     <View style={styles.container}>
       <Image
-        source={userPhotoURL ? { uri: userPhotoURL.uri } : null}
+        source={userPhotoURL ? { uri: userPhotoURL } : null}
         style={styles.profileImage}
       />
       <View style={styles.buttonContainer}>

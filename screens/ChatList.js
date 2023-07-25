@@ -101,10 +101,7 @@ const ChatList = () => {
       <View style={styles.chatItem}>
         {item.users.map((user) => (
           <View key={user.userId} style={styles.userInfoContainer}>
-            <Image
-              style={styles.avatar}
-              source={{ uri: user.userPhotoURL.uri }}
-            />
+            <Image style={styles.avatar} source={{ uri: user.userPhotoURL }} />
             <Text style={styles.username}>{user.userName}</Text>
           </View>
         ))}

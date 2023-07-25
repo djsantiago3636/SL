@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import firebase from "firebase/compat/app";
-import { auth, firestore } from "../firebase";
+import { auth, firestore, storage } from "../firebase";
 import "firebase/compat/firestore";
 import "firebase/compat/storage";
 import "firebase/compat/database";
@@ -25,6 +25,7 @@ import { doc, setDoc } from "@firebase/firestore";
 import { database } from "../firebase";
 import Header from "../navigation/Header";
 import { Picker } from "@react-native-picker/picker";
+import "react-native-get-random-values";
 
 const Tab = createMaterialTopTabNavigator();
 
@@ -41,6 +42,8 @@ const AttractionsTab = () => {
   const [uploading, setUploading] = useState(false);
   const [userLatitude, setUserLatitude] = useState(null);
   const [userLongitude, setUserLongitude] = useState(null);
+  const [attractionsDocumentCreated, setAttractionsDocumentCreated] =
+    useState(false); // Flag to track if the users document has been created
 
   useEffect(() => {
     updateCurrentUserLocation();
@@ -73,7 +76,7 @@ const AttractionsTab = () => {
       quality: 1,
     });
 
-    if (!result.cancelled) {
+    if (!result.canceled) {
       // Use the "assets" array to access the selected image(s)
       const { assets } = result;
       const selectedImage = assets.length > 0 ? assets[0].uri : null;
@@ -89,56 +92,121 @@ const AttractionsTab = () => {
     const user = firebase.auth().currentUser;
     const userRef = firestore.collection("users").doc(user.uid);
     const attractionsSurveyRef = userRef.collection("attractionsSurvey");
+    const attractionsSurveySeparateRef = firestore
+      .collection("attractionsSurvey")
+      .doc(user.uid);
 
-    // Update the data in the users document
-    await userRef.set(
-      {
-        id: user.uid,
-        name: name,
-        age: age,
-        gender: gender,
-        genderLookingFor: genderLookingFor,
-        minAgeLookingFor: minAgeLookingFor,
-        maxAgeLookingFor: maxAgeLookingFor,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        photoURL: image,
-      },
-      { merge: true } // Merge the new data with the existing document
-    );
+    // Generate a unique filename for the image
+    const imageFileName = `${uuidv4()}.jpg`;
 
-    // Check if attractions survey document already exists
-    const attractionsSurveySnapshot = await attractionsSurveyRef.limit(1).get();
-    if (!attractionsSurveySnapshot.empty) {
-      // Update the existing attractions survey document
-      const attractionsSurveyDoc = attractionsSurveySnapshot.docs[0];
-      await attractionsSurveyDoc.ref.update({
-        name: name,
-        age: age,
-        gender: gender,
-        genderLookingFor: genderLookingFor,
-        minAgeLookingFor: minAgeLookingFor,
-        maxAgeLookingFor: maxAgeLookingFor,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        photoURL: image,
-        matches: [],
-      });
-    } else {
-      // Create a new attractions survey document
-      await attractionsSurveyRef.doc(user.uid).set({
-        id: user.uid,
-        name: name,
-        age: age,
-        gender: gender,
-        genderLookingFor: genderLookingFor,
-        minAgeLookingFor: minAgeLookingFor,
-        maxAgeLookingFor: maxAgeLookingFor,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        photoURL: image,
-        matches: [],
-      });
+    // Create a storage reference for the image file
+    const imageRef = storage.ref().child(imageFileName);
+
+    try {
+      // Upload the image file to Firebase Storage
+      setUploading(true);
+      const response = await fetch(image.uri);
+      const blob = await response.blob();
+      await imageRef.put(blob);
+
+      // Get the download URL of the uploaded image
+      const downloadURL = await imageRef.getDownloadURL();
+
+      if (!attractionsDocumentCreated) {
+        // Update the data in the users document only if it doesn't exist
+        await userRef.set(
+          {
+            id: user.uid,
+            name: name,
+            age: age,
+            gender: gender,
+            genderLookingFor: genderLookingFor,
+            minAgeLookingFor: minAgeLookingFor,
+            maxAgeLookingFor: maxAgeLookingFor,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            photoURL: downloadURL,
+          },
+          { merge: false } // Do not merge the new data with the existing document
+        );
+
+        setAttractionsDocumentCreated(true); // Set the flag to true after creating the users document
+      }
+
+      // Check if attractions survey document already exists in the "users" collection
+      const attractionsSurveySnapshot = await attractionsSurveyRef
+        .limit(1)
+        .get();
+
+      if (!attractionsSurveySnapshot.empty) {
+        // Update the existing attractions survey document in the "users" collection
+        const attractionsSurveyDoc = attractionsSurveySnapshot.docs[0];
+        await attractionsSurveyDoc.ref.update({
+          name: name,
+          age: age,
+          gender: gender,
+          genderLookingFor: genderLookingFor,
+          minAgeLookingFor: minAgeLookingFor,
+          maxAgeLookingFor: maxAgeLookingFor,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          photoURL: downloadURL,
+          matches: [],
+        });
+      } else {
+        // Create a new attractions survey document in the "users" collection
+        await attractionsSurveyRef.doc(user.uid).set({
+          id: user.uid,
+          name: name,
+          age: age,
+          gender: gender,
+          genderLookingFor: genderLookingFor,
+          minAgeLookingFor: minAgeLookingFor,
+          maxAgeLookingFor: maxAgeLookingFor,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          photoURL: downloadURL,
+          matches: [],
+        });
+      }
+
+      // Check if attractions survey document already exists in the separate "attractionsSurvey" collection
+      const attractionsSurveySeparateSnapshot =
+        await attractionsSurveySeparateRef.get();
+
+      if (attractionsSurveySeparateSnapshot.exists) {
+        // Update the existing attractions survey document in the separate "attractionsSurvey" collection
+        await attractionsSurveySeparateRef.update({
+          name: name,
+          age: age,
+          gender: gender,
+          genderLookingFor: genderLookingFor,
+          minAgeLookingFor: minAgeLookingFor,
+          maxAgeLookingFor: maxAgeLookingFor,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          photoURL: downloadURL,
+          matches: [],
+        });
+      } else {
+        // Create a new attractions survey document in the separate "attractionsSurvey" collection
+        await attractionsSurveySeparateRef.set({
+          id: user.uid,
+          name: name,
+          age: age,
+          gender: gender,
+          genderLookingFor: genderLookingFor,
+          minAgeLookingFor: minAgeLookingFor,
+          maxAgeLookingFor: maxAgeLookingFor,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          photoURL: downloadURL,
+          matches: [],
+        });
+      }
+
+      console.log("Data has been stored to Firestore!");
+    } catch (error) {
+      console.error("Error creating profile:", error);
+      Alert.alert("Error", "Failed to create profile. Please try again.");
+    } finally {
+      setUploading(false);
     }
-
-    console.log("Data has been stored to Firestore!");
 
     navigation.navigate("MatchList");
   };
@@ -232,8 +300,13 @@ const AttractionsTab = () => {
         <TouchableOpacity
           style={styles.createProfileButton}
           onPress={handleCreateProfile}
+          disabled={uploading}
         >
-          <Text style={styles.createProfileButtonText}>Update Profile</Text>
+          {uploading ? (
+            <Text style={styles.createProfileButtonText}>Uploading...</Text>
+          ) : (
+            <Text style={styles.createProfileButtonText}>Update Profile</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -251,6 +324,7 @@ const FriendsTab = () => {
   const [image, setImage] = useState(null);
   const [textColor, setTextColor] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [friendsDocumentCreated, setFriendsDocumentCreated] = useState(false); // Flag to track if the users document has been created
 
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
@@ -260,7 +334,7 @@ const FriendsTab = () => {
       quality: 1,
     });
 
-    if (!result.cancelled) {
+    if (!result.canceled) {
       // Use the "assets" array to access the selected image(s)
       const { assets } = result;
       const selectedImage = assets.length > 0 ? assets[0].uri : null;
@@ -276,56 +350,118 @@ const FriendsTab = () => {
     const user = firebase.auth().currentUser;
     const userRef = firestore.collection("users").doc(user.uid);
     const friendsSurveyRef = userRef.collection("friendsSurvey");
+    const friendsSurveySeparateRef = firestore
+      .collection("friendsSurvey")
+      .doc(user.uid);
 
-    // Update the data in the users document
-    await userRef.set(
-      {
-        id: user.uid,
-        name: name,
-        age: age,
-        gender: gender,
-        genderLookingFor: genderLookingFor,
-        minAgeLookingFor: minAgeLookingFor,
-        maxAgeLookingFor: maxAgeLookingFor,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        photoURL: image,
-      },
-      { merge: true } // Merge the new data with the existing document
-    );
+    // Generate a unique filename for the image
+    const imageFileName = `${uuidv4()}.jpg`;
 
-    // Check if friends survey document already exists
-    const friendsSurveySnapshot = await friendsSurveyRef.limit(1).get();
-    if (!friendsSurveySnapshot.empty) {
-      // Update the existing friends survey document
-      const friendsSurveyDoc = friendsSurveySnapshot.docs[0];
-      await friendsSurveyDoc.ref.update({
-        name: name,
-        age: age,
-        gender: gender,
-        genderLookingFor: genderLookingFor,
-        minAgeLookingFor: minAgeLookingFor,
-        maxAgeLookingFor: maxAgeLookingFor,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        photoURL: image,
-        matches: [],
-      });
-    } else {
-      // Create a new friends survey document
-      await friendsSurveyRef.doc(user.uid).set({
-        id: user.uid,
-        name: name,
-        age: age,
-        gender: gender,
-        genderLookingFor: genderLookingFor,
-        minAgeLookingFor: minAgeLookingFor,
-        maxAgeLookingFor: maxAgeLookingFor,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        photoURL: image,
-        matches: [],
-      });
+    // Create a storage reference for the image file
+    const imageRef = storage.ref().child(imageFileName);
+
+    try {
+      // Upload the image file to Firebase Storage
+      setUploading(true);
+      const response = await fetch(image.uri);
+      const blob = await response.blob();
+      await imageRef.put(blob);
+
+      // Get the download URL of the uploaded image
+      const downloadURL = await imageRef.getDownloadURL();
+
+      if (!friendsDocumentCreated) {
+        // Update the data in the users document only if it doesn't exist
+        await userRef.set(
+          {
+            id: user.uid,
+            name: name,
+            age: age,
+            gender: gender,
+            genderLookingFor: genderLookingFor,
+            minAgeLookingFor: minAgeLookingFor,
+            maxAgeLookingFor: maxAgeLookingFor,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            photoURL: downloadURL,
+          },
+          { merge: false } // Do not merge the new data with the existing document
+        );
+
+        setFriendsDocumentCreated(true); // Set the flag to true after creating the users document
+      }
+
+      // Check if friends survey document already exists
+      const friendsSurveySnapshot = await friendsSurveyRef.limit(1).get();
+
+      if (!friendsSurveySnapshot.empty) {
+        // Update the existing friends survey document
+        const friendsSurveyDoc = friendsSurveySnapshot.docs[0];
+        await friendsSurveyDoc.ref.update({
+          name: name,
+          age: age,
+          gender: gender,
+          genderLookingFor: genderLookingFor,
+          minAgeLookingFor: minAgeLookingFor,
+          maxAgeLookingFor: maxAgeLookingFor,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          photoURL: downloadURL,
+          matches: [],
+        });
+      } else {
+        // Create a new friends survey document
+        await friendsSurveyRef.doc(user.uid).set({
+          id: user.uid,
+          name: name,
+          age: age,
+          gender: gender,
+          genderLookingFor: genderLookingFor,
+          minAgeLookingFor: minAgeLookingFor,
+          maxAgeLookingFor: maxAgeLookingFor,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          photoURL: downloadURL,
+          matches: [],
+        });
+      }
+
+      const friendsSurveySeparateSnapshot =
+        await friendsSurveySeparateRef.get();
+
+      if (friendsSurveySeparateSnapshot.exists) {
+        // Update the existing attractions survey document in the separate "attractionsSurvey" collection
+        await friendsSurveySeparateRef.update({
+          name: name,
+          age: age,
+          gender: gender,
+          genderLookingFor: genderLookingFor,
+          minAgeLookingFor: minAgeLookingFor,
+          maxAgeLookingFor: maxAgeLookingFor,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          photoURL: downloadURL,
+          matches: [],
+        });
+      } else {
+        // Create a new attractions survey document in the separate "attractionsSurvey" collection
+        await friendsSurveySeparateRef.set({
+          id: user.uid,
+          name: name,
+          age: age,
+          gender: gender,
+          genderLookingFor: genderLookingFor,
+          minAgeLookingFor: minAgeLookingFor,
+          maxAgeLookingFor: maxAgeLookingFor,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          photoURL: downloadURL,
+          matches: [],
+        });
+      }
+
+      console.log("Data has been stored to Firestore!");
+    } catch (error) {
+      console.error("Error creating profile:", error);
+      Alert.alert("Error", "Failed to create profile. Please try again.");
+    } finally {
+      setUploading(false);
     }
-
-    console.log("Data has been stored to Firestore!");
 
     navigation.navigate("MatchList");
   };
@@ -419,8 +555,13 @@ const FriendsTab = () => {
         <TouchableOpacity
           style={styles.createProfileButton}
           onPress={handleCreateFriendProfile}
+          disabled={uploading}
         >
-          <Text style={styles.createProfileButtonText}>Update Profile</Text>
+          {uploading ? (
+            <Text style={styles.createProfileButtonText}>Uploading...</Text>
+          ) : (
+            <Text style={styles.createProfileButtonText}>Update Profile</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

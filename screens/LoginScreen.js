@@ -9,6 +9,7 @@ import {
   ImageBackground,
   Image,
   Linking,
+  Button,
 } from "react-native";
 import React, { useEffect, useState } from "react";
 import { TextInput } from "react-native-gesture-handler";
@@ -16,6 +17,7 @@ import { auth } from "../firebase";
 import { useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
+import * as Sentry from "@sentry/react-native";
 
 const LoginScreen = () => {
   const [email, setEmail] = useState("");

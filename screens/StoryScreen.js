@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
 import { Camera } from "expo-camera";
+import { ImageManipulator } from "expo-image-manipulator";
 import { useNavigation } from "@react-navigation/native";
 import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
-import { firestore, auth } from "../firebase";
+import { firestore, auth, storage } from "../firebase";
 import { Ionicons } from "@expo/vector-icons";
 import "firebase/compat/firestore";
 import "firebase/compat/storage";
@@ -15,12 +16,13 @@ const StoryScreen = () => {
   const [cameraType, setCameraType] = useState(Camera.Constants.Type.back);
   const [capturedMedia, setCapturedMedia] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [flashMode, setFlashMode] = useState(Camera.Constants.FlashMode.off);
   const cameraRef = useRef(null);
   const navigation = useNavigation();
 
   useEffect(() => {
     (async () => {
-      const { status } = await Camera.requestPermissionsAsync();
+      const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === "granted");
     })();
   }, []);
@@ -33,15 +35,38 @@ const StoryScreen = () => {
     );
   };
 
+  const handleToggleFlash = () => {
+    setFlashMode((prevFlashMode) =>
+      prevFlashMode === Camera.Constants.FlashMode.off
+        ? Camera.Constants.FlashMode.on
+        : Camera.Constants.FlashMode.off
+    );
+  };
+
   const handleCapturePhoto = async () => {
     if (cameraRef.current) {
       try {
-        const photo = await cameraRef.current.takePictureAsync();
+        let photo = await cameraRef.current.takePictureAsync();
+
+        // Check if the camera is using the front camera
+        if (cameraType === Camera.Constants.Type.front) {
+          // Apply horizontal flip to the captured photo
+          photo = await ImageManipulator.manipulateAsync(
+            photo.uri,
+            [{ flip: ImageManipulator.FlipType.Horizontal }],
+            { format: ImageManipulator.SaveFormat.JPEG, compress: 1 }
+          );
+        }
+
         setCapturedMedia(photo);
       } catch (error) {
         console.error("Error capturing photo:", error);
       }
     }
+  };
+
+  const handleBackButton = () => {
+    navigation.goBack();
   };
 
   const handleCancel = () => {
@@ -50,18 +75,34 @@ const StoryScreen = () => {
 
   const handleSubmission = async () => {
     try {
-      const user = firebase.auth().currentUser;
+      const currentUser = auth.currentUser;
+      const userId = currentUser.uid;
 
-      // Generate an expiration time 24 hours from now
       const expirationTime = Date.now() + 24 * 60 * 60 * 1000;
 
-      // Update the user's "users" document with the captured photo and expiration time
-      await firestore.collection("users").doc(user.uid).update({
-        story: capturedMedia.uri,
+      // Generate a unique filename for the image
+      const imageFileName = `${userId}_${Date.now()}.jpg`;
+
+      // Create a storage reference for the image file
+      const imageRef = storage.ref().child(imageFileName);
+
+      // Convert the capturedMedia to a Blob object
+      const response = await fetch(capturedMedia.uri);
+      const blob = await response.blob();
+
+      // Upload the image file to Firebase Storage
+      await imageRef.put(blob);
+
+      // Get the download URL of the uploaded image
+      const downloadURL = await imageRef.getDownloadURL();
+
+      const storyDocRef = firestore.collection("sharedStories").doc(userId);
+
+      await storyDocRef.set({
+        story: downloadURL,
         expirationTime: expirationTime,
       });
 
-      // Reset the captured media state
       setCapturedMedia(null);
 
       navigation.navigate("MatchList");
@@ -106,11 +147,23 @@ const StoryScreen = () => {
               </TouchableOpacity>
             )}
           </View>
+          {/* Back button */}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBackButton}
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
         </>
       ) : (
         <>
           {/* Render camera view */}
-          <Camera style={styles.camera} type={cameraType} ref={cameraRef}>
+          <Camera
+            style={styles.camera}
+            type={cameraType}
+            ref={cameraRef}
+            flashMode={flashMode}
+          >
             <View style={styles.buttonContainer}>
               <TouchableOpacity
                 style={styles.flipButton}
@@ -122,8 +175,29 @@ const StoryScreen = () => {
                 style={styles.captureButton}
                 onPress={handleCapturePhoto}
               ></TouchableOpacity>
+              <TouchableOpacity
+                style={styles.flashButton}
+                onPress={handleToggleFlash}
+              >
+                <Ionicons
+                  name={
+                    flashMode === Camera.Constants.FlashMode.off
+                      ? "flash-off"
+                      : "flash"
+                  }
+                  size={24}
+                  color="white"
+                />
+              </TouchableOpacity>
             </View>
           </Camera>
+          {/* Back button */}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBackButton}
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
         </>
       )}
     </View>
@@ -249,11 +323,41 @@ const styles = StyleSheet.create({
   },
   backButton: {
     position: "absolute",
-    top: 100,
-    left: 20,
+    top: 160,
+    left: 40,
+    zIndex: 1,
+    alignSelf: "flex-start", // Align to the left
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "black",
+    borderRadius: 8,
+    shadowColor: "lightblue",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  flashButton: {
+    position: "absolute",
+    top: 160,
+    left: "50%",
     zIndex: 1,
     fontSize: 24,
     padding: 10,
+    backgroundColor: "black",
+    borderRadius: 8,
+    shadowColor: "lightblue",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 3,
   },
 });
 

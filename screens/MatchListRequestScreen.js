@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 import { firestore } from "../firebase";
 import { auth } from "../firebase";
 import MatchList from "./MatchListScreen";
-import firebase from "firebase/compat";
+import firebase from "firebase/compat/app";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -21,6 +21,27 @@ const MatchListRequestScreen = ({ route }) => {
   const navigation = useNavigation();
   const [modalVisible, setModalVisible] = useState(false);
   const [zoomedImage, setZoomedImage] = useState(null);
+  const [storyImage, setStoryImage] = useState("");
+
+  useEffect(() => {
+    const fetchStoryImage = async () => {
+      try {
+        const sharedStoriesRef = firestore
+          .collection("sharedStories")
+          .doc(match.id);
+        const storyDoc = await sharedStoriesRef.get();
+        if (storyDoc.exists) {
+          const storyData = storyDoc.data();
+          setStoryImage(storyData.story);
+          console.log("Fetched story image:", storyData.story);
+        }
+      } catch (error) {
+        console.error("Error fetching story image:", error);
+      }
+    };
+
+    fetchStoryImage();
+  }, [match.id]);
 
   const handleGoBack = () => {
     navigation.goBack();
@@ -100,15 +121,19 @@ const MatchListRequestScreen = ({ route }) => {
         </TouchableOpacity>
       </View>
       <View style={styles.container}>
-        <TouchableOpacity onPress={() => handleImagePress(match.photoURL.uri)}>
-          <Image
-            source={{ uri: match.photoURL.uri }}
-            style={styles.profileImage}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => handleImagePress(match.story)}>
-          <Image source={{ uri: match.story }} style={styles.storyImage} />
-        </TouchableOpacity>
+        <View style={styles.imagesContainer}>
+          <TouchableOpacity onPress={() => handleImagePress(match.photoURL)}>
+            <Image
+              source={{ uri: match.photoURL }}
+              style={styles.profileImage}
+            />
+          </TouchableOpacity>
+          {storyImage && (
+            <TouchableOpacity onPress={() => handleImagePress(storyImage)}>
+              <Image source={{ uri: storyImage }} style={styles.storyImage} />
+            </TouchableOpacity>
+          )}
+        </View>
         <TouchableOpacity style={styles.requestButton} onPress={handleRequest}>
           <Text style={styles.requestButtonText}>Send Request</Text>
         </TouchableOpacity>
@@ -135,8 +160,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     alignItems: "center",
+    justifyContent: "center", // Center content vertically
     backgroundColor: "black",
-    paddingTop: 170,
   },
   header: {
     flexDirection: "row",
@@ -155,11 +180,6 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
   },
-  backButtonText: {
-    color: "lightblue",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
   profileImage: {
     width: 300,
     height: 300,
@@ -172,12 +192,16 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     marginBottom: 8,
   },
+  imagesContainer: {
+    alignItems: "center",
+    justifyContent: "center", // Center content vertically
+  },
   requestButton: {
     backgroundColor: "black",
     padding: 12,
     alignItems: "center",
     borderRadius: 8,
-    marginTop: -300,
+    marginBottom: 16,
     shadowColor: "lightblue",
     shadowOffset: {
       width: 0,

@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
@@ -25,6 +26,8 @@ const AttractionsTab = () => {
   const [matches, setMatches] = useState([]);
   const [userLatitude, setUserLatitude] = useState(null);
   const [userLongitude, setUserLongitude] = useState(null);
+  const [isTabActive, setIsTabActive] = useState(false);
+  const [isLoading, setIsLoading] = useState(null); // New state variable
   const navigation = useNavigation();
 
   useEffect(() => {
@@ -43,41 +46,40 @@ const AttractionsTab = () => {
         setUserLatitude(latitude);
         setUserLongitude(longitude);
 
-        // Update the user's location in the "users" document
         const currentUser = firebase.auth().currentUser;
-        const userRef = firestore.collection("users").doc(currentUser.uid);
-        await userRef.update({
+        const currentUserDocRef = firestore
+          .collection("users")
+          .doc(currentUser.uid);
+
+        // Update the current user's location in their "users" document
+        await currentUserDocRef.update({
           latitude: latitude,
           longitude: longitude,
         });
 
-        // Update the user's location in the attractionsSurvey document
-        const attractionsSurveyRef = userRef.collection("attractionsSurvey");
-        const attractionsSurveySnapshot = await attractionsSurveyRef.get();
-
-        // Update latitude and longitude in each attractionsSurvey document
-        attractionsSurveySnapshot.docs.forEach(async (doc) => {
-          const surveyDocRef = attractionsSurveyRef.doc(doc.id);
-          await surveyDocRef.update({
+        // Update the current user's location in the "attractionsSurvey" documents
+        const attractionsSurveyRef = firestore.collection("attractionsSurvey");
+        const currentUserAttractionsSnapshot = await attractionsSurveyRef
+          .doc(currentUser.uid)
+          .get();
+        if (currentUserAttractionsSnapshot.exists) {
+          await currentUserAttractionsSnapshot.ref.update({
             latitude: latitude,
             longitude: longitude,
           });
-        });
+        }
 
-        // Update the user's location in the friendsSurvey document
-        const friendsSurveyRef = userRef.collection("friendsSurvey");
-        const friendsSurveySnapshot = await friendsSurveyRef.get();
-
-        // Update latitude and longitude in each friendsSurvey document
-        friendsSurveySnapshot.docs.forEach(async (doc) => {
-          const surveyDocRef = friendsSurveyRef.doc(doc.id);
-          await surveyDocRef.update({
+        // Update the current user's location in the "friendsSurvey" documents
+        const friendsSurveyRef = firestore.collection("friendsSurvey");
+        const currentUserFriendsSnapshot = await friendsSurveyRef
+          .doc(currentUser.uid)
+          .get();
+        if (currentUserFriendsSnapshot.exists) {
+          await currentUserFriendsSnapshot.ref.update({
             latitude: latitude,
             longitude: longitude,
           });
-        });
-
-        fetchMatches();
+        }
       } catch (error) {
         console.error("Error updating user location:", error);
       }
@@ -86,140 +88,199 @@ const AttractionsTab = () => {
     updateCurrentUserLocation();
   }, []);
 
+  useEffect(() => {
+    if (userLatitude && userLongitude) {
+      fetchMatches();
+    }
+  }, [isTabActive, userLatitude, userLongitude]);
+
   const fetchMatches = async () => {
+    setIsLoading(true);
+    const getDistance = (lat1, lon1, lat2, lon2) => {
+      const R = 6371; // Radius of the Earth in kilometers
+      const dLat = deg2rad(lat2 - lat1);
+      const dLon = deg2rad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(deg2rad(lat1)) *
+          Math.cos(deg2rad(lat2)) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distance = R * c; // Distance in kilometers
+      return distance * 1000; // Convert to meters
+    };
+
+    const deg2rad = (deg) => {
+      return deg * (Math.PI / 180);
+    };
+
     try {
       const currentUser = firebase.auth().currentUser;
-      const currentUserDoc = await firestore
-        .collection("users")
+      const currentUserAttractionsSnapshot = await firestore
+        .collection("attractionsSurvey")
         .doc(currentUser.uid)
         .get();
-      const currentUserData = currentUserDoc.data();
-
-      const currentUserAttractionsSurveyRef =
-        currentUserDoc.ref.collection("attractionsSurvey");
-      const currentUserAttractionsSnapshot =
-        await currentUserAttractionsSurveyRef.get();
-      const currentUserAttractionsData =
-        currentUserAttractionsSnapshot.docs.map((doc) => doc.data());
+      const currentUserAttractionsData = currentUserAttractionsSnapshot.data();
 
       console.log("Attractions Survey Data:", currentUserAttractionsData);
 
-      const usersSnapshot = await firestore.collection("users").get();
-      console.log("Users Snapshot size:", usersSnapshot.size);
+      const attractionsSnapshot = await firestore
+        .collection("attractionsSurvey")
+        .get();
+      console.log("Attractions Snapshot size:", attractionsSnapshot.size);
 
-      const promises = usersSnapshot.docs.map(async (userDoc) => {
-        const userId = userDoc.id;
-        if (userId !== currentUser.uid) {
-          const attractionsRef = userDoc.ref.collection("attractionsSurvey");
-          const attractionsSnapshot = await attractionsRef.get();
+      const attractionsDataArray = attractionsSnapshot.docs.map(
+        (attractionsDoc) => {
+          const userId = attractionsDoc.id;
+          const userData = attractionsDoc.data();
+          return {
+            id: userId,
+            data: { ...userData, age: parseInt(userData.age) },
+          };
+        }
+      );
 
-          const acceptedRequestsRef =
-            userDoc.ref.collection("acceptedRequests");
-          const acceptedRequestsSnapshot = await acceptedRequestsRef.get();
-          const acceptedRequestsData = acceptedRequestsSnapshot.docs.map(
+      const filteredAttractionsDataArray = attractionsDataArray.filter(
+        (attractionsData) => attractionsData.id !== currentUser.uid
+      );
+      console.log(
+        "Attractions Survey Data from User:",
+        filteredAttractionsDataArray
+      );
+
+      const promises = filteredAttractionsDataArray.map(
+        async (attractionsData) => {
+          const userId = attractionsData.id;
+          const userData = attractionsData.data;
+
+          const currentUserDocRef = firestore
+            .collection("users")
+            .doc(currentUser.uid);
+          const currentUserAcceptedRequestsRef =
+            currentUserDocRef.collection("acceptedRequests");
+          const currentUserAcceptedRequestsSnapshot =
+            await currentUserAcceptedRequestsRef.get();
+          const currentUserAcceptedRequestsData =
+            currentUserAcceptedRequestsSnapshot.docs.map((doc) => doc.data());
+
+          const currentUserDeniedRequestsRef =
+            currentUserDocRef.collection("deniedRequests");
+          const currentUserDeniedRequestsSnapshot =
+            await currentUserDeniedRequestsRef.get();
+          const currentUserDeniedRequestsData =
+            currentUserDeniedRequestsSnapshot.docs.map((doc) => doc.data());
+
+          const currentUserSentRequestsRef =
+            currentUserDocRef.collection("sentRequests");
+          const currentUserSentRequestsSnapshot =
+            await currentUserSentRequestsRef.get();
+          const currentUserSentRequestsData =
+            currentUserSentRequestsSnapshot.docs.map((doc) => doc.data());
+
+          const currentUserRequestsRef =
+            currentUserDocRef.collection("requests");
+          const currentUserRequestsSnapshot =
+            await currentUserRequestsRef.get();
+          const currentUserRequestsData = currentUserRequestsSnapshot.docs.map(
             (doc) => doc.data()
           );
 
-          const deniedRequestsRef = userDoc.ref.collection("deniedRequests");
-          const deniedRequestsSnapshot = await deniedRequestsRef.get();
-          const deniedRequestsData = deniedRequestsSnapshot.docs.map((doc) =>
-            doc.data()
+          console.log(
+            "Accepted Requests Data:",
+            currentUserAcceptedRequestsData
+          );
+          console.log("Denied Requests Data:", currentUserDeniedRequestsData);
+          console.log("Sent Requests", currentUserSentRequestsData);
+          console.log("Requests", currentUserRequestsData);
+
+          // Convert age values to numbers
+          const minAgeLookingFor = currentUserAttractionsData.minAgeLookingFor;
+          const maxAgeLookingFor = currentUserAttractionsData.maxAgeLookingFor;
+          const userAge = userData.age;
+
+          console.log("Min Age Looking For:", minAgeLookingFor);
+          console.log("Max Age Looking For:", maxAgeLookingFor);
+          console.log("User Age:", userAge);
+          console.log(
+            "Gender Looking For of Possible Match:",
+            userData.genderLookingFor
+          );
+          console.log("Gender of Possible Match:", userData.gender);
+          console.log(
+            "Gender Looking For of Current User:",
+            currentUserAttractionsData.genderLookingFor
+          );
+          console.log(
+            "Gender of Current User:",
+            currentUserAttractionsData.gender
           );
 
-          const sentRequestsRef = currentUserDoc.ref.collection("sentRequests");
-          const sentRequestsSnapshot = await sentRequestsRef.get();
-          const sentRequestsData = sentRequestsSnapshot.docs.map((doc) =>
-            doc.data()
+          // Check if the user has been denied by the current user
+          const denied = currentUserDeniedRequestsData.some(
+            (deniedRequest) => deniedRequest.senderId === userId
           );
 
-          const requestsRef = currentUserDoc.ref.collection("requests");
-          const requestsSnapshot = await requestsRef.get();
-          const requestsData = requestsSnapshot.docs.map((doc) => doc.data());
-
-          console.log("Accepted Requests Data:", acceptedRequestsData);
-          console.log("Denied Requests Data:", deniedRequestsData);
-          console.log("Sent Requests", sentRequestsData);
-          console.log("Requests", requestsData);
-
-          const userDataArray = attractionsSnapshot.docs.map(
-            (attractionsDoc) => {
-              const userData = attractionsDoc.data();
-
-              // Check if the user has been denied by the current user
-              const denied = deniedRequestsData.some(
-                (deniedRequest) => deniedRequest.senderId === userId
-              );
-
-              // Check if the current user has already sent a request to the user
-              const sentRequest = sentRequestsData.some(
-                (sentRequests) => sentRequests.receiverId === userId
-              );
-
-              // Check if the user has requested the current user
-              const requests = requestsData.some(
-                (requests) => requests.senderId === userId
-              );
-
-              // Check if the user is in the acceptedRequests of the current user
-              const inAcceptedRequests = acceptedRequestsData.some(
-                (acceptedRequest) => acceptedRequest.senderId === userId
-              );
-
-              // Calculate the distance between the current user and the matched user
-              const distance = calculateDistance(
-                currentUserData.latitude,
-                currentUserData.longitude,
-                userData.latitude,
-                userData.longitude
-              );
-
-              // Apply filtering conditions based on gender, age, request status, distance, and sent request
-              if (
-                userData.gender === currentUserData.genderLookingFor &&
-                userData.age >= currentUserData.minAgeLookingFor &&
-                userData.age <= currentUserData.maxAgeLookingFor &&
-                !requests &&
-                !denied &&
-                !sentRequest &&
-                !inAcceptedRequests &&
-                distance <= 100 // Distance in meters
-              ) {
-                return { id: attractionsDoc.id, data: userData };
-              }
-
-              return null;
-            }
+          // Check if the current user has already sent a request to the user
+          const sentRequest = currentUserSentRequestsData.some(
+            (sentRequest) => sentRequest.receiverId === userId
           );
 
-          return userDataArray.filter(Boolean); // Remove null entries
+          // Check if the user has requested the current user
+          const requests = currentUserRequestsData.some(
+            (request) => request.senderId === userId
+          );
+
+          // Check if the user is in the acceptedRequests of the current user
+          const inAcceptedRequests = currentUserAcceptedRequestsData.some(
+            (acceptedRequest) => acceptedRequest.senderId === userId
+          );
+
+          console.log("Denied:", denied);
+          console.log("Sent Request:", sentRequest);
+          console.log("Requests:", requests);
+          console.log("In Accepted Requests:", inAcceptedRequests);
+
+          // Calculate the distance between the user and the potential match
+          const distance = getDistance(
+            userLatitude,
+            userLongitude,
+            userData.latitude,
+            userData.longitude
+          );
+
+          console.log("Distance:", distance);
+
+          // Apply filtering conditions based on gender, age, request status, and sent request
+          const isMatch =
+            userData.gender === currentUserAttractionsData.genderLookingFor &&
+            userAge >= minAgeLookingFor &&
+            userAge <= maxAgeLookingFor &&
+            !requests &&
+            !denied &&
+            !sentRequest &&
+            !inAcceptedRequests &&
+            distance <= 150; // Filter within 150 meters
+
+          console.log("Is Match:", isMatch);
+
+          if (isMatch) {
+            return { id: userId, data: userData };
+          }
+
+          return null;
         }
-        return []; // Return an empty array for the current user
-      });
+      );
 
-      const userDataArrays = await Promise.all(promises);
-      const mergedDataArray = [].concat(...userDataArrays);
-      console.log("Attractions Matches:", mergedDataArray);
-      setMatches(mergedDataArray);
+      const matchesDataArray = await Promise.all(promises);
+      const filteredMatchesDataArray = matchesDataArray.filter(Boolean);
+      console.log("Attractions Matches:", filteredMatchesDataArray);
+      setMatches(filteredMatchesDataArray);
     } catch (error) {
       console.error("Error fetching matches:", error);
+    } finally {
+      setIsLoading(false);
     }
-  };
-
-  // Function to calculate the distance between two sets of latitude and longitude coordinates using the Haversine formula
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371e3; // Earth's radius in meters
-    const φ1 = (lat1 * Math.PI) / 180; // φ, λ in radians
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-    const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    const distance = R * c; // Distance in meters
-    return distance;
   };
 
   const handleInviteFriends = async () => {
@@ -241,13 +302,21 @@ const AttractionsTab = () => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="lightblue" />
+      </View>
+    );
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.profilesContainer}>
       {matches.map((userMatch) => {
         return (
           <View key={userMatch.id} style={styles.profileContainer}>
             <Image
-              source={{ uri: userMatch.data.photoURL.uri }}
+              source={{ uri: userMatch.data.photoURL }}
               style={styles.profileImage}
             />
             <TouchableOpacity
@@ -277,44 +346,205 @@ const AttractionsTab = () => {
 
 const FriendsTab = () => {
   const [matches, setMatches] = useState([]);
+  const [isTabActive, setIsTabActive] = useState(false);
+  const [isLoading, setIsLoading] = useState(null); // New state variable
   const navigation = useNavigation();
 
   useEffect(() => {
     const fetchMatches = async () => {
+      setIsLoading(true);
+      const getDistance = (lat1, lon1, lat2, lon2) => {
+        const R = 6371; // Radius of the Earth in kilometers
+        const dLat = deg2rad(lat2 - lat1);
+        const dLon = deg2rad(lon2 - lon1);
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(deg2rad(lat1)) *
+            Math.cos(deg2rad(lat2)) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c; // Distance in kilometers
+        return distance * 1000; // Convert to meters
+      };
+
+      const deg2rad = (deg) => {
+        return deg * (Math.PI / 180);
+      };
+
       try {
         const currentUser = firebase.auth().currentUser;
-        const usersSnapshot = await firestore.collection("users").get();
-        console.log("Users Snapshot size:", usersSnapshot.size);
+        const currentUserFriendsSnapshot = await firestore
+          .collection("friendsSurvey")
+          .doc(currentUser.uid)
+          .get();
+        const currentUserFriendsData = currentUserFriendsSnapshot.data();
 
-        const promises = usersSnapshot.docs.map(async (userDoc) => {
-          const userId = userDoc.id;
-          if (userId !== currentUser.uid) {
-            const friendsRef = userDoc.ref.collection("friendsSurvey");
-            const friendsSnapshot = await friendsRef.get();
+        console.log("Friends Survey Data:", currentUserFriendsData);
 
-            const userDataArray = friendsSnapshot.docs.map((friendsDoc) => {
-              const userData = friendsDoc.data();
-              return { id: friendsDoc.id, data: userData };
-            });
+        const friendsSnapshot = await firestore
+          .collection("friendsSurvey")
+          .get();
+        console.log("Friends Snapshot size:", friendsSnapshot.size);
 
-            return userDataArray;
-          }
-          return []; // Return an empty array for the current user
+        const friendsDataArray = friendsSnapshot.docs.map((friendsDoc) => {
+          const userId = friendsDoc.id;
+          const userData = friendsDoc.data();
+          return {
+            id: userId,
+            data: { ...userData, age: parseInt(userData.age) },
+          };
         });
 
-        const userDataArrays = await Promise.all(promises);
-        const mergedDataArray = [].concat(...userDataArrays);
-        console.log("Friends Matches:", mergedDataArray);
-        setMatches(mergedDataArray);
+        const filteredFriendsDataArray = friendsDataArray.filter(
+          (friendsData) => friendsData.id !== currentUser.uid
+        );
+        console.log("Friends Survey Data from User:", filteredFriendsDataArray);
+
+        const promises = filteredFriendsDataArray.map(async (friendsData) => {
+          const userId = friendsData.id;
+          const userData = friendsData.data;
+
+          const currentUserDocRef = firestore
+            .collection("users")
+            .doc(currentUser.uid);
+          const currentUserAcceptedRequestsRef =
+            currentUserDocRef.collection("acceptedRequests");
+          const currentUserAcceptedRequestsSnapshot =
+            await currentUserAcceptedRequestsRef.get();
+          const currentUserAcceptedRequestsData =
+            currentUserAcceptedRequestsSnapshot.docs.map((doc) => doc.data());
+
+          const currentUserDeniedRequestsRef =
+            currentUserDocRef.collection("deniedRequests");
+          const currentUserDeniedRequestsSnapshot =
+            await currentUserDeniedRequestsRef.get();
+          const currentUserDeniedRequestsData =
+            currentUserDeniedRequestsSnapshot.docs.map((doc) => doc.data());
+
+          const currentUserSentRequestsRef =
+            currentUserDocRef.collection("sentRequests");
+          const currentUserSentRequestsSnapshot =
+            await currentUserSentRequestsRef.get();
+          const currentUserSentRequestsData =
+            currentUserSentRequestsSnapshot.docs.map((doc) => doc.data());
+
+          const currentUserRequestsRef =
+            currentUserDocRef.collection("requests");
+          const currentUserRequestsSnapshot =
+            await currentUserRequestsRef.get();
+          const currentUserRequestsData = currentUserRequestsSnapshot.docs.map(
+            (doc) => doc.data()
+          );
+
+          console.log(
+            "Accepted Requests Data:",
+            currentUserAcceptedRequestsData
+          );
+          console.log("Denied Requests Data:", currentUserDeniedRequestsData);
+          console.log("Sent Requests", currentUserSentRequestsData);
+          console.log("Requests", currentUserRequestsData);
+
+          // Convert age values to numbers
+          const minAgeLookingFor = currentUserFriendsData.minAgeLookingFor;
+          const maxAgeLookingFor = currentUserFriendsData.maxAgeLookingFor;
+          const userAge = userData.age;
+
+          console.log("Min Age Looking For:", minAgeLookingFor);
+          console.log("Max Age Looking For:", maxAgeLookingFor);
+          console.log("User Age:", userAge);
+          console.log(
+            "Gender Looking For of Possible Match:",
+            userData.genderLookingFor
+          );
+          console.log("Gender of Possible Match:", userData.gender);
+          console.log(
+            "Gender Looking For of Current User:",
+            currentUserFriendsData.genderLookingFor
+          );
+          console.log("Gender of Current User:", currentUserFriendsData.gender);
+
+          // Check if the user has been denied by the current user
+          const denied = currentUserDeniedRequestsData.some(
+            (deniedRequest) => deniedRequest.senderId === userId
+          );
+
+          // Check if the current user has already sent a request to the user
+          const sentRequest = currentUserSentRequestsData.some(
+            (sentRequest) => sentRequest.receiverId === userId
+          );
+
+          // Check if the user has requested the current user
+          const requests = currentUserRequestsData.some(
+            (request) => request.senderId === userId
+          );
+
+          // Check if the user is in the acceptedRequests of the current user
+          const inAcceptedRequests = currentUserAcceptedRequestsData.some(
+            (acceptedRequest) => acceptedRequest.senderId === userId
+          );
+
+          console.log("Denied:", denied);
+          console.log("Sent Request:", sentRequest);
+          console.log("Requests:", requests);
+          console.log("In Accepted Requests:", inAcceptedRequests);
+
+          // Get the latitude and longitude from the friendsSurvey collection
+          const friendSurveySnapshot = await firestore
+            .collection("friendsSurvey")
+            .doc(userId)
+            .get();
+          const friendSurveyData = friendSurveySnapshot.data();
+          const friendLatitude = friendSurveyData.latitude;
+          const friendLongitude = friendSurveyData.longitude;
+
+          // Calculate the distance between the user and the potential match
+          const distance = getDistance(
+            currentUserFriendsData.latitude,
+            currentUserFriendsData.longitude,
+            friendLatitude,
+            friendLongitude
+          );
+
+          console.log("Distance:", distance);
+
+          // Apply filtering conditions based on gender, age, request status, and sent request
+          const isFriendMatch =
+            userData.gender === currentUserFriendsData.genderLookingFor &&
+            userAge >= minAgeLookingFor &&
+            userAge <= maxAgeLookingFor &&
+            !requests &&
+            !denied &&
+            !sentRequest &&
+            !inAcceptedRequests &&
+            distance <= 150; // Filter within 150 meters
+
+          console.log("Is FriendMatch:", isFriendMatch);
+
+          if (isFriendMatch) {
+            return { id: userId, data: userData };
+          }
+
+          return null;
+        });
+
+        const matchesDataArray = await Promise.all(promises);
+        const filteredMatchesDataArray = matchesDataArray.filter(Boolean);
+        console.log("Friends Matches:", filteredMatchesDataArray);
+        setMatches(filteredMatchesDataArray);
       } catch (error) {
         console.error("Error fetching matches:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
     fetchMatches();
-  }, []);
+  }, [isTabActive]);
 
   console.log("Friends Matches:", matches);
+
+  // Rest of the code to display matches in FriendsTab
 
   const handleInviteFriends = async () => {
     const { status } = await Permissions.askAsync(Permissions.CONTACTS);
@@ -335,6 +565,14 @@ const FriendsTab = () => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="lightblue" />
+      </View>
+    );
+  }
+
   // Rest of the code to display matches in FriendsTab
 
   return (
@@ -343,7 +581,7 @@ const FriendsTab = () => {
         return (
           <View key={userMatch.id} style={styles.profileContainer}>
             <Image
-              source={{ uri: userMatch.data.photoURL.uri }}
+              source={{ uri: userMatch.data.photoURL }}
               style={styles.profileImage}
             />
             <TouchableOpacity
@@ -432,6 +670,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "black",
   },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "black",
+  },
   profilesContainer: {
     flexGrow: 1,
     alignItems: "center",
@@ -477,7 +721,7 @@ const styles = StyleSheet.create({
     padding: 12,
     alignItems: "center",
     borderRadius: 8,
-    shadowColor: "lightblue",
+    shadowColor: "gold",
     shadowOffset: {
       width: 0,
       height: 2,
@@ -485,9 +729,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.8,
     shadowRadius: 4,
     elevation: 3,
+    marginTop: 10,
+    marginBottom: 10,
   },
   setPictureOrVideoButtonText: {
-    color: "lightblue",
+    color: "gold",
     fontSize: 16,
     fontWeight: "bold",
   },
@@ -496,7 +742,7 @@ const styles = StyleSheet.create({
     padding: 12,
     alignItems: "center",
     borderRadius: 8,
-    shadowColor: "lightblue",
+    shadowColor: "pink",
     shadowOffset: {
       width: 0,
       height: 2,
