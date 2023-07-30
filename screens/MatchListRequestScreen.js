@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Modal,
   Dimensions,
+  ScrollView,
 } from "react-native";
 import { firestore } from "../firebase";
 import { auth } from "../firebase";
@@ -26,10 +27,8 @@ const MatchListRequestScreen = ({ route }) => {
   useEffect(() => {
     const fetchStoryImage = async () => {
       try {
-        const sharedStoriesRef = firestore
-          .collection("sharedStories")
-          .doc(match.id);
-        const storyDoc = await sharedStoriesRef.get();
+        const userStoriesRef = firestore.collection("users").doc(match.id);
+        const storyDoc = await userStoriesRef.get();
         if (storyDoc.exists) {
           const storyData = storyDoc.data();
           setStoryImage(storyData.story);
@@ -121,25 +120,58 @@ const MatchListRequestScreen = ({ route }) => {
         </TouchableOpacity>
       </View>
       <View style={styles.container}>
-        <View style={styles.imagesContainer}>
-          <TouchableOpacity onPress={() => handleImagePress(match.photoURL)}>
-            <Image
-              source={{ uri: match.photoURL }}
-              style={styles.profileImage}
-            />
-          </TouchableOpacity>
-          {storyImage && (
-            <TouchableOpacity onPress={() => handleImagePress(storyImage)}>
-              <Image source={{ uri: storyImage }} style={styles.storyImage} />
+        <ScrollView horizontal contentContainerStyle={styles.imageContainer}>
+          {match.photoURL[0] ? (
+            <TouchableOpacity
+              onPress={() => handleImagePress(match.photoURL[0])}
+            >
+              <Image
+                source={{ uri: match.photoURL[0] }}
+                style={styles.profileImage}
+              />
             </TouchableOpacity>
-          )}
-        </View>
+          ) : null}
+          {match.photoURL[1] ? (
+            <TouchableOpacity
+              onPress={() => handleImagePress(match.photoURL[1])}
+            >
+              <Image
+                source={{ uri: match.photoURL[1] }}
+                style={styles.profileImage}
+              />
+            </TouchableOpacity>
+          ) : null}
+          {match.photoURL[2] ? (
+            <TouchableOpacity
+              onPress={() => handleImagePress(match.photoURL[2])}
+            >
+              <Image
+                source={{ uri: match.photoURL[2] }}
+                style={styles.profileImage}
+              />
+            </TouchableOpacity>
+          ) : null}
+        </ScrollView>
+        {storyImage ? (
+          <View style={styles.storyContainer}>
+            <TouchableOpacity onPress={() => handleImagePress(storyImage)}>
+              <View style={styles.centeredContainer}>
+                <Image source={{ uri: storyImage }} style={styles.storyImage} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         <TouchableOpacity style={styles.requestButton} onPress={handleRequest}>
           <Text style={styles.requestButtonText}>Send Request</Text>
         </TouchableOpacity>
         {/* Add other profile details here */}
       </View>
-      <Modal animationType="fade" transparent visible={modalVisible}>
+      <Modal
+        animationType="fade"
+        transparent
+        visible={modalVisible}
+        onRequestClose={handleModalClose}
+      >
         <TouchableOpacity
           style={styles.modalContainer}
           onPress={handleModalClose}
@@ -160,7 +192,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center", // Center content vertically
+    justifyContent: "center",
     backgroundColor: "black",
   },
   header: {
@@ -192,16 +224,23 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     marginBottom: 8,
   },
-  imagesContainer: {
+  imageContainer: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center", // Center content vertically
+    justifyContent: "center",
+  },
+  storyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   requestButton: {
     backgroundColor: "black",
     padding: 12,
     alignItems: "center",
     borderRadius: 8,
-    marginBottom: 16,
+    paddingVertical: 16, // Increase the height by adjusting the padding
+    paddingHorizontal: 60,
+    marginBottom: 80,
     shadowColor: "lightblue",
     shadowOffset: {
       width: 0,
@@ -213,7 +252,7 @@ const styles = StyleSheet.create({
   },
   requestButtonText: {
     color: "lightblue",
-    fontSize: 16,
+    fontSize: 24,
     fontWeight: "bold",
   },
   modalContainer: {

@@ -316,7 +316,7 @@ const AttractionsTab = () => {
         return (
           <View key={userMatch.id} style={styles.profileContainer}>
             <Image
-              source={{ uri: userMatch.data.photoURL }}
+              source={{ uri: userMatch.data.photoURL[0] }}
               style={styles.profileImage}
             />
             <TouchableOpacity
@@ -581,7 +581,7 @@ const FriendsTab = () => {
         return (
           <View key={userMatch.id} style={styles.profileContainer}>
             <Image
-              source={{ uri: userMatch.data.photoURL }}
+              source={{ uri: userMatch.data.photoURL[0] }}
               style={styles.profileImage}
             />
             <TouchableOpacity

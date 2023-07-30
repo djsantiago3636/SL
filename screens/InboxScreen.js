@@ -78,12 +78,17 @@ const InboxScreen = ({ navigation }) => {
     navigation.navigate("RequestDetail", { requestId });
   };
 
-  const renderRequestThreadItem = ({ item, index }) => {
-    const requestText = `${index + 1}. Request`;
+  const renderRequestThreadItem = ({ item }) => {
     return (
       <TouchableOpacity onPress={() => handleRequestPress(item.id)}>
         <View style={styles.listItem}>
-          <Text style={styles.requestText}>{requestText}</Text>
+          <View style={styles.userInfoContainer}>
+            <Image
+              style={styles.avatar}
+              source={{ uri: item.userData.photoURL[0] }}
+            />
+            <Text style={styles.requestText}>REQUEST</Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -174,6 +179,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
     textTransform: "capitalize",
+    backgroundColor: "black",
   },
   tabBarStyle: {
     backgroundColor: "lightblue",
@@ -191,6 +197,16 @@ const styles = StyleSheet.create({
   requestText: {
     fontSize: 26,
     fontWeight: "bold",
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 25,
+    marginRight: 10,
+  },
+  userInfoContainer: {
+    flexDirection: "row",
+    alignItems: "center",
   },
 });
 

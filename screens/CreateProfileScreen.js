@@ -16,6 +16,7 @@ import {
   Image,
   StyleSheet,
   KeyboardAvoidingView,
+  SafeAreaView,
 } from "react-native";
 import * as Location from "expo-location";
 import * as FileSystem from "expo-file-system";
@@ -38,6 +39,8 @@ const AttractionsTab = () => {
   const [minAgeLookingFor, setMinAgeLookingFor] = useState("");
   const [maxAgeLookingFor, setMaxAgeLookingFor] = useState("");
   const [image, setImage] = useState(null);
+  const [image2, setImage2] = useState(null);
+  const [image3, setImage3] = useState(null);
   const [textColor, setTextColor] = useState("");
   const [uploading, setUploading] = useState(false);
   const [userLatitude, setUserLatitude] = useState(null);
@@ -87,6 +90,42 @@ const AttractionsTab = () => {
     }
   };
 
+  const pickImage2 = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      // Use the "assets" array to access the selected image(s)
+      const { assets } = result;
+      const selectedImage = assets.length > 0 ? assets[0].uri : null;
+
+      const source = selectedImage ? { uri: selectedImage } : null;
+      setImage2(source);
+    }
+  };
+
+  const pickImage3 = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      // Use the "assets" array to access the selected image(s)
+      const { assets } = result;
+      const selectedImage = assets.length > 0 ? assets[0].uri : null;
+
+      const source = selectedImage ? { uri: selectedImage } : null;
+      setImage3(source);
+    }
+  };
+
   const handleCreateProfile = async () => {
     console.log("handleCreateProfile");
     const user = firebase.auth().currentUser;
@@ -96,21 +135,39 @@ const AttractionsTab = () => {
       .collection("attractionsSurvey")
       .doc(user.uid);
 
-    // Generate a unique filename for the image
-    const imageFileName = `${uuidv4()}.jpg`;
-
-    // Create a storage reference for the image file
-    const imageRef = storage.ref().child(imageFileName);
-
     try {
-      // Upload the image file to Firebase Storage
+      // Set uploading flag to true
       setUploading(true);
-      const response = await fetch(image.uri);
-      const blob = await response.blob();
-      await imageRef.put(blob);
 
-      // Get the download URL of the uploaded image
-      const downloadURL = await imageRef.getDownloadURL();
+      const uploadImage = async (image) => {
+        if (!image) return null;
+
+        // Generate a unique filename for the image
+        const imageFileName = `${uuidv4()}.jpg`;
+
+        // Create a storage reference for the image file
+        const imageRef = storage.ref().child(imageFileName);
+
+        // Upload the image file to Firebase Storage
+        const response = await fetch(image.uri);
+        const blob = await response.blob();
+        await imageRef.put(blob);
+
+        // Get the download URL of the uploaded image
+        return imageRef.getDownloadURL();
+      };
+
+      // Upload all three images and get their download URLs
+      const [downloadURL, downloadURL2, downloadURL3] = await Promise.all([
+        uploadImage(image),
+        uploadImage(image2),
+        uploadImage(image3),
+      ]);
+
+      // Combine the download URLs into an array
+      const photoURLs = [downloadURL, downloadURL2, downloadURL3].filter(
+        (url) => url !== null
+      );
 
       if (!attractionsDocumentCreated) {
         // Update the data in the users document only if it doesn't exist
@@ -124,7 +181,7 @@ const AttractionsTab = () => {
             minAgeLookingFor: minAgeLookingFor,
             maxAgeLookingFor: maxAgeLookingFor,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            photoURL: downloadURL,
+            photoURL: photoURLs,
           },
           { merge: false } // Do not merge the new data with the existing document
         );
@@ -148,7 +205,7 @@ const AttractionsTab = () => {
           minAgeLookingFor: minAgeLookingFor,
           maxAgeLookingFor: maxAgeLookingFor,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          photoURL: downloadURL,
+          photoURL: photoURLs,
           matches: [],
         });
       } else {
@@ -162,7 +219,7 @@ const AttractionsTab = () => {
           minAgeLookingFor: minAgeLookingFor,
           maxAgeLookingFor: maxAgeLookingFor,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          photoURL: downloadURL,
+          photoURL: photoURLs,
           matches: [],
         });
       }
@@ -181,7 +238,7 @@ const AttractionsTab = () => {
           minAgeLookingFor: minAgeLookingFor,
           maxAgeLookingFor: maxAgeLookingFor,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          photoURL: downloadURL,
+          photoURL: photoURLs,
           matches: [],
         });
       } else {
@@ -195,7 +252,7 @@ const AttractionsTab = () => {
           minAgeLookingFor: minAgeLookingFor,
           maxAgeLookingFor: maxAgeLookingFor,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          photoURL: downloadURL,
+          photoURL: photoURLs,
           matches: [],
         });
       }
@@ -205,6 +262,7 @@ const AttractionsTab = () => {
       console.error("Error creating profile:", error);
       Alert.alert("Error", "Failed to create profile. Please try again.");
     } finally {
+      // Set uploading flag to false after everything is done
       setUploading(false);
     }
 
@@ -280,20 +338,26 @@ const AttractionsTab = () => {
           />
           <View style={styles.fileContainer}>
             <TouchableOpacity onPress={pickImage}>
-              <Text style={styles.buttonText}>Select Profile Picture</Text>
+              <Text style={styles.buttonText}>Main Profile Pic</Text>
             </TouchableOpacity>
             {image ? (
-              <Image
-                source={{ uri: image.uri }}
-                style={{
-                  width: 200,
-                  height: 200,
-                  marginTop: 20,
-                  borderColor: "lightblue",
-                  borderWidth: 2,
-                  alignSelf: "center",
-                }}
-              />
+              <Image source={{ uri: image.uri }} style={styles.profileImage} />
+            ) : null}
+          </View>
+          <View style={styles.fileContainer}>
+            <TouchableOpacity onPress={pickImage2}>
+              <Text style={styles.buttonText}>Profile Pic 2</Text>
+            </TouchableOpacity>
+            {image2 ? (
+              <Image source={{ uri: image2.uri }} style={styles.profileImage} />
+            ) : null}
+          </View>
+          <View style={styles.fileContainer}>
+            <TouchableOpacity onPress={pickImage3}>
+              <Text style={styles.buttonText}>Profile Pic 3</Text>
+            </TouchableOpacity>
+            {image3 ? (
+              <Image source={{ uri: image3.uri }} style={styles.profileImage} />
             ) : null}
           </View>
         </View>
@@ -321,7 +385,9 @@ const FriendsTab = () => {
   const [genderLookingFor, setGenderLookingFor] = useState("");
   const [minAgeLookingFor, setMinAgeLookingFor] = useState("");
   const [maxAgeLookingFor, setMaxAgeLookingFor] = useState("");
-  const [image, setImage] = useState(null);
+  const [image4, setImage4] = useState(null);
+  const [image5, setImage5] = useState(null);
+  const [image6, setImage6] = useState(null);
   const [textColor, setTextColor] = useState("");
   const [uploading, setUploading] = useState(false);
   const [friendsDocumentCreated, setFriendsDocumentCreated] = useState(false); // Flag to track if the users document has been created
@@ -341,7 +407,43 @@ const FriendsTab = () => {
 
       const source = selectedImage ? { uri: selectedImage } : null;
       console.log(source);
-      setImage(source);
+      setImage4(source);
+    }
+  };
+
+  const pickImage2 = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      // Use the "assets" array to access the selected image(s)
+      const { assets } = result;
+      const selectedImage = assets.length > 0 ? assets[0].uri : null;
+
+      const source = selectedImage ? { uri: selectedImage } : null;
+      setImage5(source);
+    }
+  };
+
+  const pickImage3 = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      // Use the "assets" array to access the selected image(s)
+      const { assets } = result;
+      const selectedImage = assets.length > 0 ? assets[0].uri : null;
+
+      const source = selectedImage ? { uri: selectedImage } : null;
+      setImage6(source);
     }
   };
 
@@ -361,14 +463,38 @@ const FriendsTab = () => {
     const imageRef = storage.ref().child(imageFileName);
 
     try {
-      // Upload the image file to Firebase Storage
+      // Set uploading flag to true
       setUploading(true);
-      const response = await fetch(image.uri);
-      const blob = await response.blob();
-      await imageRef.put(blob);
 
-      // Get the download URL of the uploaded image
-      const downloadURL = await imageRef.getDownloadURL();
+      const uploadImage = async (image) => {
+        if (!image) return null;
+
+        // Generate a unique filename for the image
+        const imageFileName = `${uuidv4()}.jpg`;
+
+        // Create a storage reference for the image file
+        const imageRef = storage.ref().child(imageFileName);
+
+        // Upload the image file to Firebase Storage
+        const response = await fetch(image.uri);
+        const blob = await response.blob();
+        await imageRef.put(blob);
+
+        // Get the download URL of the uploaded image
+        return imageRef.getDownloadURL();
+      };
+
+      // Upload all three images and get their download URLs
+      const [downloadURL, downloadURL2, downloadURL3] = await Promise.all([
+        uploadImage(image4),
+        uploadImage(image5),
+        uploadImage(image6),
+      ]);
+
+      // Combine the download URLs into an array
+      const photoURLs = [downloadURL, downloadURL2, downloadURL3].filter(
+        (url) => url !== null
+      );
 
       if (!friendsDocumentCreated) {
         // Update the data in the users document only if it doesn't exist
@@ -382,7 +508,7 @@ const FriendsTab = () => {
             minAgeLookingFor: minAgeLookingFor,
             maxAgeLookingFor: maxAgeLookingFor,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            photoURL: downloadURL,
+            photoURL: photoURLs,
           },
           { merge: false } // Do not merge the new data with the existing document
         );
@@ -404,7 +530,7 @@ const FriendsTab = () => {
           minAgeLookingFor: minAgeLookingFor,
           maxAgeLookingFor: maxAgeLookingFor,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          photoURL: downloadURL,
+          photoURL: photoURLs,
           matches: [],
         });
       } else {
@@ -418,7 +544,7 @@ const FriendsTab = () => {
           minAgeLookingFor: minAgeLookingFor,
           maxAgeLookingFor: maxAgeLookingFor,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          photoURL: downloadURL,
+          photoURL: photoURLs,
           matches: [],
         });
       }
@@ -436,7 +562,7 @@ const FriendsTab = () => {
           minAgeLookingFor: minAgeLookingFor,
           maxAgeLookingFor: maxAgeLookingFor,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          photoURL: downloadURL,
+          photoURL: photoURLs,
           matches: [],
         });
       } else {
@@ -450,7 +576,7 @@ const FriendsTab = () => {
           minAgeLookingFor: minAgeLookingFor,
           maxAgeLookingFor: maxAgeLookingFor,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          photoURL: downloadURL,
+          photoURL: photoURLs,
           matches: [],
         });
       }
@@ -535,20 +661,26 @@ const FriendsTab = () => {
           />
           <View style={styles.fileContainer}>
             <TouchableOpacity onPress={pickImage}>
-              <Text style={styles.buttonText}>Select Profile Picture</Text>
+              <Text style={styles.buttonText}>Main Profile Pic</Text>
             </TouchableOpacity>
-            {image ? (
-              <Image
-                source={{ uri: image.uri }}
-                style={{
-                  width: 200,
-                  height: 200,
-                  marginTop: 20,
-                  borderColor: "lightblue",
-                  borderWidth: 2,
-                  alignSelf: "center",
-                }}
-              />
+            {image4 ? (
+              <Image source={{ uri: image4.uri }} style={styles.profileImage} />
+            ) : null}
+          </View>
+          <View style={styles.fileContainer}>
+            <TouchableOpacity onPress={pickImage2}>
+              <Text style={styles.buttonText}>Profile Pic 2</Text>
+            </TouchableOpacity>
+            {image5 ? (
+              <Image source={{ uri: image5.uri }} style={styles.profileImage} />
+            ) : null}
+          </View>
+          <View style={styles.fileContainer}>
+            <TouchableOpacity onPress={pickImage3}>
+              <Text style={styles.buttonText}>Profile Pic 3</Text>
+            </TouchableOpacity>
+            {image6 ? (
+              <Image source={{ uri: image6.uri }} style={styles.profileImage} />
             ) : null}
           </View>
         </View>
@@ -590,41 +722,45 @@ const CreateProfile = () => {
         handleMiddle={handleMiddleButtonPress}
         handleRight={handleRightButtonPress}
       />
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-          tabBarStyle: {
-            backgroundColor: "black",
-          },
-          tabBarLabelStyle: {
-            color: "lightblue",
-          },
-        })}
-      >
-        <Tab.Screen name="Attractions" component={AttractionsTab} />
-        <Tab.Screen name="Friends" component={FriendsTab} />
-      </Tab.Navigator>
+      <View style={{ flex: 1, backgroundColor: "black" }}>
+        <Tab.Navigator
+          screenOptions={({ route }) => ({
+            tabBarStyle: {
+              backgroundColor: "black",
+            },
+            tabBarLabelStyle: {
+              color: "lightblue",
+            },
+          })}
+        >
+          <Tab.Screen name="Attractions" component={AttractionsTab} />
+          <Tab.Screen name="Friends" component={FriendsTab} />
+        </Tab.Navigator>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     backgroundColor: "black",
     paddingHorizontal: 28,
   },
   contentContainer: {
     flexGrow: 1,
     paddingVertical: 16,
+    backgroundColor: "black",
   },
   inputContainer: {
     paddingHorizontal: 28,
-    marginBottom: 28,
+    marginBottom: 12,
+    backgroundColor: "black",
   },
   input: {
     backgroundColor: "black",
     borderRadius: 8,
-    padding: 12,
+    padding: 16,
     marginBottom: 12,
     color: "lightblue",
     shadowColor: "lightblue",
@@ -641,7 +777,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 12,
     color: "black",
-    height: 180,
+    height: 154,
   },
   fileContainer: {
     alignItems: "center",
@@ -654,12 +790,12 @@ const styles = StyleSheet.create({
   },
   createProfileButton: {
     backgroundColor: "black",
-    padding: 12,
+    padding: 30,
     alignItems: "center",
     borderRadius: 8,
     marginHorizontal: 16,
     marginTop: 16,
-    shadowColor: "lightblue",
+    shadowColor: "gold",
     shadowOffset: {
       width: 0,
       height: 2,
@@ -669,9 +805,17 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   createProfileButtonText: {
-    color: "lightblue",
+    color: "gold",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  profileImage: {
+    width: 200,
+    height: 200,
+    marginTop: 20,
+    borderColor: "lightblue",
+    borderWidth: 2,
+    alignSelf: "center",
   },
 });
 

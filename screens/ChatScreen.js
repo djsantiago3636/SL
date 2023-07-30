@@ -9,6 +9,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,6 +22,9 @@ const ChatScreen = ({ route }) => {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [receiverName, setReceiverName] = useState("");
+  const [isReportModalVisible, setReportModalVisible] = useState(false);
+  const [isReportPressed, setReportPressed] = useState(false);
+  const [isUnmatchPressed, setUnmatchPressed] = useState(false);
 
   useEffect(() => {
     const fetchChatData = async () => {
@@ -112,6 +116,52 @@ const ChatScreen = ({ route }) => {
     navigation.goBack();
   };
 
+  const toggleReportModal = () => {
+    setReportModalVisible((prevVisible) => !prevVisible);
+    setReportPressed(true); // Set isReportPressed to true when the report modal is opened
+  };
+
+  const handleUnmatch = async () => {
+    try {
+      // Add "Unmatched" subdoc in the current user's "users" subcollection
+      await firebase
+        .firestore()
+        .collection("users")
+        .doc(user.uid)
+        .collection("Unmatched")
+        .doc(receiverId)
+        .set(
+          {
+            [receiverId]: true,
+          },
+          { merge: true }
+        );
+
+      // Add "Unmatched" subdoc in the receiver's "users" subcollection
+      await firebase
+        .firestore()
+        .collection("users")
+        .doc(receiverId)
+        .collection("Unmatched")
+        .doc(user.uid)
+        .set(
+          {
+            [user.uid]: true,
+          },
+          { merge: true }
+        );
+
+      // Handle successful unmatch
+      console.log("Unmatched successfully");
+
+      // Navigate back to the inbox or any other relevant screen
+      navigation.navigate("Inbox");
+    } catch (error) {
+      console.error("Error unmatching:", error);
+      // Handle the error appropriately
+    }
+  };
+
   const handleReportUser = async () => {
     try {
       const reportData = {
@@ -119,14 +169,37 @@ const ChatScreen = ({ route }) => {
         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
       };
 
-      await firebase.firestore().collection("unmatchedReport").add(reportData);
+      // Add the reportData to the current user's "Reports" subcollection
+      await firebase
+        .firestore()
+        .collection("users")
+        .doc(user.uid)
+        .collection("Reports")
+        .add(reportData);
+
+      // Add the reportData to the receiver's "Reports" subcollection
+      await firebase
+        .firestore()
+        .collection("users")
+        .doc(receiverId)
+        .collection("Reports")
+        .add(reportData);
+
+      // Add the reportData to the new "Reports" collection
+      await firebase.firestore().collection("Reports").add(reportData);
 
       // Handle successful reporting
       console.log("Users reported successfully");
+
+      navigation.navigate("Inbox");
     } catch (error) {
       console.error("Error reporting users:", error);
       // Handle the error appropriately
     }
+  };
+
+  const handleCancelReport = () => {
+    toggleReportModal();
   };
 
   return (
@@ -138,7 +211,7 @@ const ChatScreen = ({ route }) => {
         <Text style={styles.headerText}>{receiverName}</Text>
         <TouchableOpacity
           style={styles.reportButton}
-          onPress={handleReportUser}
+          onPress={toggleReportModal}
         >
           <Ionicons name="ios-flag" size={24} color="black" />
         </TouchableOpacity>
@@ -178,6 +251,39 @@ const ChatScreen = ({ route }) => {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      {/* Report Modal */}
+      <Modal visible={isReportModalVisible} transparent>
+        <View style={styles.modalContainer}>
+          {isReportPressed && (
+            <>
+              <TouchableOpacity
+                style={styles.reportOptionButton}
+                onPress={() => {
+                  handleUnmatch();
+                  toggleReportModal();
+                }}
+              >
+                <Text style={styles.reportOptionText}>Unmatch</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.reportOptionButton}
+                onPress={() => {
+                  handleReportUser();
+                  toggleReportModal();
+                }}
+              >
+                <Text style={styles.reportOptionText}>Report</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          <TouchableOpacity
+            style={styles.reportOptionButton}
+            onPress={handleCancelReport}
+          >
+            <Text style={styles.reportOptionText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -199,7 +305,7 @@ const styles = StyleSheet.create({
   },
   headerText: {
     color: "lightblue",
-    fontSize: 18,
+    fontSize: 30,
     fontWeight: "bold",
   },
   flatListContent: {
@@ -275,6 +381,22 @@ const styles = StyleSheet.create({
   receivedMessageContainer: {
     alignSelf: "flex-start",
     backgroundColor: "black",
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  reportOptionButton: {
+    backgroundColor: "lightblue",
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  reportOptionText: {
+    color: "black",
+    fontSize: 16,
   },
 });
 

@@ -23,7 +23,9 @@ import Header from "../navigation/Header";
 const ProfileView = () => {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
-  const [image, setImage] = useState("");
+  const [image, setImage] = useState(null);
+  const [image2, setImage2] = useState(null);
+  const [image3, setImage3] = useState(null);
   const [storyImage, setStoryImage] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [zoomedImage, setZoomedImage] = useState(null);
@@ -39,11 +41,13 @@ const ProfileView = () => {
       const data = snapshot.data();
       setName(data.name);
       setAge(data.age);
-      setImage(data.photoURL);
+      setImage(data.photoURL[0]);
+      setImage2(data.photoURL[1]);
+      setImage3(data.photoURL[2]);
       console.log("Fetched image:", data.photoURL);
 
       // Fetch story image from "sharedStories" collection
-      const storyDocRef = firestore.collection("sharedStories").doc(user.uid);
+      const storyDocRef = firestore.collection("users").doc(user.uid);
       const storyDoc = await storyDocRef.get();
       if (storyDoc.exists) {
         const storyData = storyDoc.data();
@@ -100,17 +104,33 @@ const ProfileView = () => {
         handleRight={handleRightButtonPress}
       />
       <View style={styles.profile}>
-        {image ? (
-          <TouchableOpacity onPress={() => handleImagePress(image)}>
-            <Image source={{ uri: image }} style={styles.profileImage} />
-          </TouchableOpacity>
-        ) : null}
-        {storyImage ? (
-          <TouchableOpacity onPress={() => handleImagePress(storyImage)}>
-            <Image source={{ uri: storyImage }} style={styles.storyImage} />
-          </TouchableOpacity>
-        ) : null}
+        <ScrollView horizontal contentContainerStyle={styles.imageContainer}>
+          {image ? (
+            <TouchableOpacity onPress={() => handleImagePress(image)}>
+              <Image source={{ uri: image }} style={styles.profileImage} />
+            </TouchableOpacity>
+          ) : null}
+          {image2 ? (
+            <TouchableOpacity onPress={() => handleImagePress(image2)}>
+              <Image source={{ uri: image2 }} style={styles.profileImage} />
+            </TouchableOpacity>
+          ) : null}
+          {image3 ? (
+            <TouchableOpacity onPress={() => handleImagePress(image3)}>
+              <Image source={{ uri: image3 }} style={styles.profileImage} />
+            </TouchableOpacity>
+          ) : null}
+        </ScrollView>
       </View>
+      {storyImage ? (
+        <View style={styles.storyContainer}>
+          <TouchableOpacity onPress={() => handleImagePress(storyImage)}>
+            <View style={styles.centeredContainer}>
+              <Image source={{ uri: storyImage }} style={styles.storyImage} />
+            </View>
+          </TouchableOpacity>
+        </View>
+      ) : null}
       <TouchableOpacity
         style={styles.editButton}
         onPress={handleEditButtonPress}
@@ -224,6 +244,10 @@ const styles = StyleSheet.create({
     width: windowWidth * 0.8,
     height: windowHeight * 0.8,
     resizeMode: "contain",
+  },
+  centeredContainer: {
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
 

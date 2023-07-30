@@ -19,6 +19,35 @@ const ChatList = () => {
       try {
         const currentUser = firebase.auth().currentUser;
 
+        // Fetch the current user's "Reports" subcollection
+        const reportsSnapshot = await firebase
+          .firestore()
+          .collection("users")
+          .doc(currentUser.uid)
+          .collection("Reports")
+          .get();
+
+        // Get an array of user IDs present in the "Reports" subcollection
+        const reportedUserIds = reportsSnapshot.docs.map((doc) => {
+          const userIds = doc.data().userIds;
+          return userIds.find((userId) => userId !== currentUser.uid);
+        });
+
+        console.log("Reported Users:", reportedUserIds);
+
+        // Fetch the current user's "Unmatched" subcollection
+        const unmatchedSnapshot = await firebase
+          .firestore()
+          .collection("users")
+          .doc(currentUser.uid)
+          .collection("Unmatched")
+          .get();
+
+        // Get an array of user IDs present in the "Unmatched" subcollection
+        const unmatchedUserIds = unmatchedSnapshot.docs.map((doc) => doc.id);
+
+        console.log("Unmatched Users:", unmatchedUserIds);
+
         // Query the "matchAccepted" collection
         const querySnapshot = await firebase
           .firestore()
@@ -38,40 +67,50 @@ const ChatList = () => {
             (userId) => userId !== currentUser.uid
           );
 
-          // Get the other users' documents from the "users" collection
-          const otherUserDocs = await Promise.all(
-            otherUserIds.map((userId) =>
-              firebase.firestore().collection("users").doc(userId).get()
-            )
+          // Check if any of the other user's IDs are in the "Reports" subcollection
+          // and not in the "Unmatched" subcollection
+          const shouldIncludeChat = otherUserIds.every(
+            (userId) =>
+              !reportedUserIds.includes(userId) &&
+              !unmatchedUserIds.includes(userId)
           );
 
-          const chatUsers = otherUserDocs.map((otherUserDoc) => {
-            if (otherUserDoc.exists) {
-              const otherUserData = otherUserDoc.data();
-              const otherUserName = otherUserData.name;
-              const otherUserPhotoURL = otherUserData.photoURL;
+          if (shouldIncludeChat) {
+            // Get the other users' documents from the "users" collection
+            const otherUserDocs = await Promise.all(
+              otherUserIds.map((userId) =>
+                firebase.firestore().collection("users").doc(userId).get()
+              )
+            );
 
-              // Create a user object with ID, name, and photoURL
-              return {
-                userId: otherUserDoc.id,
-                userName: otherUserName,
-                userPhotoURL: otherUserPhotoURL,
-              };
-            }
-            return null;
-          });
+            const chatUsers = otherUserDocs.map((otherUserDoc) => {
+              if (otherUserDoc.exists) {
+                const otherUserData = otherUserDoc.data();
+                const otherUserName = otherUserData.name;
+                const otherUserPhotoURL = otherUserData.photoURL;
 
-          // Filter out null values (in case a user document was not found)
-          const validChatUsers = chatUsers.filter((user) => user !== null);
+                // Create a user object with ID, name, and photoURL
+                return {
+                  userId: otherUserDoc.id,
+                  userName: otherUserName,
+                  userPhotoURL: otherUserPhotoURL,
+                };
+              }
+              return null;
+            });
 
-          // Create a chat object with the chat ID and users
-          const chat = {
-            chatId: doc.id,
-            otherUserId: otherUserIds[0],
-            users: validChatUsers,
-          };
+            // Filter out null values (in case a user document was not found)
+            const validChatUsers = chatUsers.filter((user) => user !== null);
 
-          chats.push(chat);
+            // Create a chat object with the chat ID and users
+            const chat = {
+              chatId: doc.id,
+              otherUserId: otherUserIds[0],
+              users: validChatUsers,
+            };
+
+            chats.push(chat);
+          }
         });
 
         setChatList(chats);
@@ -101,7 +140,10 @@ const ChatList = () => {
       <View style={styles.chatItem}>
         {item.users.map((user) => (
           <View key={user.userId} style={styles.userInfoContainer}>
-            <Image style={styles.avatar} source={{ uri: user.userPhotoURL }} />
+            <Image
+              style={styles.avatar}
+              source={{ uri: user.userPhotoURL[0] }}
+            />
             <Text style={styles.username}>{user.userName}</Text>
           </View>
         ))}
@@ -125,10 +167,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 10,
+    height: 100,
   },
   avatar: {
-    width: 50,
-    height: 50,
+    width: 80,
+    height: 80,
     borderRadius: 25,
     marginRight: 10,
   },
@@ -137,7 +180,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   username: {
-    fontSize: 18,
+    fontSize: 26,
     fontWeight: "bold",
   },
 });

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
 import { Camera } from "expo-camera";
-import { ImageManipulator } from "expo-image-manipulator";
+import { manipulateAsync } from "expo-image-manipulator";
+import * as ImageManipulator from "expo-image-manipulator";
 import { useNavigation } from "@react-navigation/native";
 import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
@@ -102,6 +103,18 @@ const StoryScreen = () => {
         story: downloadURL,
         expirationTime: expirationTime,
       });
+
+      const userRef = firestore.collection("users").doc(userId);
+      const userDoc = await userRef.get();
+      if (userDoc.exists) {
+        await userRef.update({
+          story: downloadURL,
+          storyExpirationTime: expirationTime,
+        });
+      } else {
+        console.error("User document does not exist");
+        // Handle the case where the user document is missing
+      }
 
       setCapturedMedia(null);
 

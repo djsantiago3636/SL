@@ -13,6 +13,8 @@ import {
   ScrollView,
   Image,
   StyleSheet,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { firestore } from "../firebase";
@@ -27,7 +29,12 @@ const RequestDetailScreen = ({ route }) => {
   const user = firebase.auth().currentUser;
   const navigation = useNavigation();
   const [userPhotoURL, setUserPhotoURL] = useState(null);
+  const [userPhotoURL2, setUserPhotoURL2] = useState(null);
+  const [userPhotoURL3, setUserPhotoURL3] = useState(null);
   const [matchPhotoURL, setMatchPhotoURL] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [userStoryImage, setUserStoryImage] = useState(null);
+  const [zoomedImage, setZoomedImage] = useState(null);
 
   const handleAccept = async () => {
     try {
@@ -85,6 +92,24 @@ const RequestDetailScreen = ({ route }) => {
           acceptedAt: firebase.firestore.FieldValue.serverTimestamp(),
           usersMatched: [user.uid, senderId], // Include the usersMatched field with both users' IDs
           userData: requestData, // Include all user data
+        });
+
+        // Create the accepted request document for the sender (the user who sent the request)
+        const senderAcceptedRef = firestore
+          .collection("users")
+          .doc(senderId)
+          .collection("acceptedRequests")
+          .doc(requestId);
+
+        // Ensure acceptedUserPhotoURL is defined before setting it in the document
+        const acceptedSenderPhotoURL = user.photoURL || "";
+
+        await senderAcceptedRef.set({
+          requestId: requestId,
+          senderId: user.uid,
+          senderName: user.displayName,
+          userPhotoURL: acceptedSenderPhotoURL,
+          acceptedAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
 
         // Delete the accepted request document from the receiver's requests collection
@@ -176,6 +201,15 @@ const RequestDetailScreen = ({ route }) => {
     }
   };
 
+  const handleImagePress = (imageUri) => {
+    setZoomedImage(imageUri);
+    setModalVisible(true);
+  };
+
+  const handleModalClose = () => {
+    setModalVisible(false);
+  };
+
   useEffect(() => {
     const fetchRequestData = async () => {
       try {
@@ -202,8 +236,19 @@ const RequestDetailScreen = ({ route }) => {
 
           if (userSnapshot.exists) {
             const userData = userSnapshot.data();
-            const userPhotoURL = userData.photoURL;
+
+            console.log("User Data", userData);
+            const userPhotoURL = userData.photoURL[0];
             setUserPhotoURL(userPhotoURL);
+            const userPhotoURL2 = userData.photoURL[1];
+            setUserPhotoURL2(userPhotoURL2);
+            const userPhotoURL3 = userData.photoURL[2];
+            setUserPhotoURL3(userPhotoURL3);
+            const userStoryImage = userData.story;
+            setUserStoryImage(userStoryImage);
+
+            // Console log to check if matchStoryImage is being grabbed
+            console.log("matchStoryImage:", userStoryImage);
           }
         }
 
@@ -225,10 +270,37 @@ const RequestDetailScreen = ({ route }) => {
 
   return (
     <View style={styles.container}>
-      <Image
-        source={userPhotoURL ? { uri: userPhotoURL } : null}
-        style={styles.profileImage}
-      />
+      <ScrollView
+        horizontal={true}
+        contentContainerStyle={styles.scrollContainer}
+      >
+        {/* TouchableOpacity for the image */}
+        <TouchableOpacity onPress={() => handleImagePress(userPhotoURL)}>
+          <Image
+            source={userPhotoURL ? { uri: userPhotoURL } : null}
+            style={styles.profileImage}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => handleImagePress(userPhotoURL2)}>
+          <Image
+            source={userPhotoURL2 ? { uri: userPhotoURL2 } : null}
+            style={styles.profileImage}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => handleImagePress(userPhotoURL3)}>
+          <Image
+            source={userPhotoURL3 ? { uri: userPhotoURL3 } : null}
+            style={styles.profileImage}
+          />
+        </TouchableOpacity>
+      </ScrollView>
+
+      {userStoryImage && (
+        <TouchableOpacity onPress={() => handleImagePress(userStoryImage)}>
+          <Image source={{ uri: userStoryImage }} style={styles.storyImage} />
+        </TouchableOpacity>
+      )}
+
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={styles.acceptButton}
@@ -249,9 +321,24 @@ const RequestDetailScreen = ({ route }) => {
           <Text style={styles.buttonText}>Deny</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Modal to display the zoomed-in story image */}
+      <Modal animationType="fade" transparent visible={modalVisible}>
+        <TouchableOpacity
+          style={styles.modalContainer}
+          onPress={handleModalClose}
+        >
+          {zoomedImage && (
+            <Image source={{ uri: zoomedImage }} style={styles.zoomedImage} />
+          )}
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
+
+const windowWidth = Dimensions.get("window").width;
+const windowHeight = Dimensions.get("window").height;
 
 const styles = StyleSheet.create({
   container: {
@@ -266,16 +353,35 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     marginBottom: 20,
   },
+  scrollContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    marginTop: 140,
+  },
+  storyImage: {
+    width: 300,
+    height: 300,
+    borderRadius: 40,
+    marginBottom: 8,
+  },
   buttonContainer: {
     flexDirection: "row",
     justifyContent: "space-around",
     width: "80%",
+    marginBottom: 70,
   },
   acceptButton: {
     backgroundColor: "green",
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
   },
   denyButton: {
     backgroundColor: "red",
@@ -287,6 +393,11 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  zoomedImage: {
+    width: windowWidth * 0.8,
+    height: windowHeight * 0.8,
+    resizeMode: "contain",
   },
 });
 
