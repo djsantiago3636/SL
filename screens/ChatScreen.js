@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
+  Dimensions,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,10 +22,16 @@ const ChatScreen = ({ route }) => {
   const navigation = useNavigation();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
+  const [userPhoto, setCurrentUserPhoto] = useState("");
   const [receiverName, setReceiverName] = useState("");
   const [isReportModalVisible, setReportModalVisible] = useState(false);
   const [isReportPressed, setReportPressed] = useState(false);
   const [isUnmatchPressed, setUnmatchPressed] = useState(false);
+  const [receiverPhoto, setReceiverPhoto] = useState("");
+  const [zoomedImage, setZoomedImage] = useState(null);
+  const [isUserPhotoModalVisible, setUserPhotoModalVisible] = useState(false);
+  const [isReceiverPhotoModalVisible, setReceiverPhotoModalVisible] =
+    useState(false);
 
   useEffect(() => {
     const fetchChatData = async () => {
@@ -75,8 +82,12 @@ const ChatScreen = ({ route }) => {
 
         if (userDoc.exists) {
           const userData = userDoc.data();
+          console.log("userData:", userData);
           const receiverName = userData.name;
           setReceiverName(receiverName);
+          const receiverPhoto = userData.photoURL[0];
+          setReceiverPhoto(receiverPhoto);
+          console.log("userPhoto", receiverPhoto);
         }
       } catch (error) {
         console.error("Error fetching receiver data:", error);
@@ -85,7 +96,28 @@ const ChatScreen = ({ route }) => {
     };
 
     fetchReceiverData();
-  }, [receiverId]);
+    const fetchCurrentUserPhoto = async () => {
+      try {
+        const currentUserRef = firebase
+          .firestore()
+          .collection("users")
+          .doc(user.uid);
+        const currentUserDoc = await currentUserRef.get();
+
+        if (currentUserDoc.exists) {
+          const currentUserData = currentUserDoc.data();
+          const userPhoto = currentUserData.photoURL[0];
+          console.log("CurrentUserPhoto", userPhoto);
+          setCurrentUserPhoto(userPhoto);
+        }
+      } catch (error) {
+        console.error("Error fetching current user data:", error);
+        // Handle the error appropriately
+      }
+    };
+
+    fetchCurrentUserPhoto();
+  }, [receiverId, user.uid]);
 
   const handleSend = async () => {
     if (text.trim() === "") {
@@ -202,6 +234,26 @@ const ChatScreen = ({ route }) => {
     toggleReportModal();
   };
 
+  const handleOpenUserPhotoModal = () => {
+    setZoomedImage(userPhoto);
+    setUserPhotoModalVisible(true);
+  };
+
+  const handleCloseUserPhotoModal = () => {
+    setUserPhotoModalVisible(false);
+  };
+
+  const handleOpenReceiverPhotoModal = () => {
+    setZoomedImage(receiverPhoto);
+    setReceiverPhotoModalVisible(true);
+  };
+
+  const handleCloseReceiverPhotoModal = () => {
+    setReceiverPhotoModalVisible(false);
+  };
+
+  const reversedMessages = messages.slice().reverse();
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -217,28 +269,56 @@ const ChatScreen = ({ route }) => {
         </TouchableOpacity>
       </View>
       <FlatList
-        data={messages.reverse()}
+        data={reversedMessages}
         renderItem={({ item }) => (
           <View
-            style={[
-              styles.messageContainer,
+            style={
               item.senderId === user.uid
-                ? styles.sentMessageContainer
-                : styles.receivedMessageContainer,
-            ]}
+                ? styles.sentMessageItemContainer
+                : styles.receivedMessageItemContainer
+            }
           >
-            <View style={styles.messageContent}>
+            {item.senderId !== user.uid && (
+              <TouchableOpacity
+                onPress={() => handleOpenReceiverPhotoModal(receiverPhoto)}
+                style={styles.profileImageContainer}
+              >
+                <Image
+                  source={{ uri: receiverPhoto }}
+                  style={styles.smallCircleImage}
+                />
+              </TouchableOpacity>
+            )}
+            <View
+              style={[
+                styles.messageContainer,
+                item.senderId === user.uid
+                  ? styles.sentMessageContainer
+                  : styles.receivedMessageContainer,
+              ]}
+            >
               <Text style={styles.messageText}>{item.text}</Text>
             </View>
+            {item.senderId === user.uid && (
+              <TouchableOpacity
+                onPress={() => handleOpenUserPhotoModal(userPhoto)}
+                style={[
+                  styles.profileImageContainer,
+                  styles.sentProfileImageContainer,
+                ]}
+              >
+                <Image
+                  source={{ uri: userPhoto }}
+                  style={styles.smallCircleImage}
+                />
+              </TouchableOpacity>
+            )}
           </View>
         )}
         keyExtractor={(item, index) => index.toString()}
         contentContainerStyle={styles.flatListContent}
       />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : null}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
-      >
+      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={64}>
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
@@ -284,9 +364,34 @@ const ChatScreen = ({ route }) => {
           </TouchableOpacity>
         </View>
       </Modal>
+      {/* User Photo Modal */}
+      <Modal visible={isUserPhotoModalVisible} transparent>
+        <TouchableOpacity
+          style={styles.modalContainer}
+          onPress={handleCloseUserPhotoModal}
+        >
+          {zoomedImage && (
+            <Image source={{ uri: zoomedImage }} style={styles.zoomedImage} />
+          )}
+        </TouchableOpacity>
+      </Modal>
+      {/* Receiver Photo Modal */}
+      <Modal visible={isReceiverPhotoModalVisible} transparent>
+        <TouchableOpacity
+          style={styles.modalContainer}
+          onPress={handleCloseReceiverPhotoModal}
+        >
+          {zoomedImage && (
+            <Image source={{ uri: zoomedImage }} style={styles.zoomedImage} />
+          )}
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
+
+const windowWidth = Dimensions.get("window").width;
+const windowHeight = Dimensions.get("window").height;
 
 const styles = StyleSheet.create({
   container: {
@@ -320,7 +425,6 @@ const styles = StyleSheet.create({
     backgroundColor: "black",
     borderRadius: 8,
     maxWidth: "60%",
-    alignSelf: "flex-start",
     shadowColor: "lightblue",
     shadowOffset: {
       width: 0,
@@ -375,11 +479,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   sentMessageContainer: {
-    alignSelf: "flex-end",
+    justifyContent: "flex-end",
     backgroundColor: "black",
   },
   receivedMessageContainer: {
-    alignSelf: "flex-start",
+    justifyContent: "flex-start",
     backgroundColor: "black",
   },
   modalContainer: {
@@ -397,6 +501,55 @@ const styles = StyleSheet.create({
   reportOptionText: {
     color: "black",
     fontSize: 16,
+  },
+  smallCircleImage: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  messageItemContainer: {
+    flexDirection: "row",
+    justifyContent: "flex-start", // Align messages to the bottom for both sides
+    marginBottom: 16,
+    alignSelf: "flex-start", // Align messages to the bottom for both sides
+  },
+  receivedMessageItemContainer: {
+    flexDirection: "row",
+    justifyContent: "flex-start", // Received messages will be on the left
+    marginBottom: 16,
+    alignSelf: "flex-start", // Align messages to the bottom for both sides
+  },
+  sentMessageItemContainer: {
+    flexDirection: "row",
+    justifyContent: "flex-end", // Sent messages will be on the right
+    marginBottom: 16,
+    alignSelf: "flex-end", // Align messages to the bottom for both sides
+  },
+  profileImageContainer: {
+    marginRight: 8,
+  },
+  receivedProfileImageContainer: {
+    marginLeft: 8,
+  },
+  sentProfileImageContainer: {
+    marginRight: 8,
+    marginLeft: 14,
+  },
+  modalImageContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalImage: {
+    width: "80%",
+    height: "80%",
+    borderRadius: 8,
+  },
+  zoomedImage: {
+    width: windowWidth * 0.8,
+    height: windowHeight * 0.8,
+    resizeMode: "contain",
   },
 });
 

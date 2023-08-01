@@ -260,7 +260,7 @@ const AttractionsTab = () => {
             !denied &&
             !sentRequest &&
             !inAcceptedRequests &&
-            distance <= 150; // Filter within 150 meters
+            distance <= 850; // Filter within 850 meters
 
           console.log("Is Match:", isMatch);
 
