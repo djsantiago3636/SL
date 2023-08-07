@@ -777,7 +777,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 12,
     color: "black",
-    height: 154,
+    height: 156,
   },
   fileContainer: {
     alignItems: "center",

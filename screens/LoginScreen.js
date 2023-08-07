@@ -150,7 +150,7 @@ const LoginScreen = () => {
     >
       <View style={styles.header}>
         <Image
-          source={require("../assets/SNEAKY-LINK-Main-Logo-No-Circle.png")}
+          source={require("../assets/SNEAKY-LIN(Q).png")}
           style={styles.headerImage}
         />
       </View>
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "flex-end", // changed to "flex-end"
     paddingHorizontal: 20,
-    marginBottom: 110, // added marginBottom to give space for the inputs/buttons
+    marginBottom: 90, // added marginBottom to give space for the inputs/buttons
   },
   inputContainer: {
     marginBottom: 40,

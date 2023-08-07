@@ -252,8 +252,24 @@ const AttractionsTab = () => {
           console.log("Distance:", distance);
 
           // Apply filtering conditions based on gender, age, request status, and sent request
+          // Apply filtering conditions based on gender, age, request status, and sent request
           const isMatch =
-            userData.gender === currentUserAttractionsData.genderLookingFor &&
+            // Check if both users have specific gender preferences that match each other
+            ((currentUserAttractionsData.genderLookingFor !== "any" &&
+              userData.gender === currentUserAttractionsData.genderLookingFor &&
+              currentUserAttractionsData.gender ===
+                userData.genderLookingFor) ||
+              // Check if current user's gender preference is "any" and it matches userData's gender
+              (currentUserAttractionsData.genderLookingFor === "any" &&
+                (userData.genderLookingFor ===
+                  currentUserAttractionsData.gender ||
+                  userData.gender ===
+                    currentUserAttractionsData.genderLookingFor)) ||
+              // Check if userData's gender preference is "any" and it matches current user's gender
+              (currentUserAttractionsData.genderLookingFor !== "any" &&
+                (userData.gender === "any" ||
+                  currentUserAttractionsData.genderLookingFor ===
+                    userData.gender))) &&
             userAge >= minAgeLookingFor &&
             userAge <= maxAgeLookingFor &&
             !requests &&
@@ -510,14 +526,27 @@ const FriendsTab = () => {
 
           // Apply filtering conditions based on gender, age, request status, and sent request
           const isFriendMatch =
-            userData.gender === currentUserFriendsData.genderLookingFor &&
+            // Check if both users have specific gender preferences that match each other
+            ((currentUserFriendsData.genderLookingFor !== "any" &&
+              userData.gender === currentUserFriendsData.genderLookingFor &&
+              currentUserFriendsData.gender === userData.genderLookingFor) ||
+              // Check if current user's gender preference is "any" and it matches userData's gender
+              (currentUserFriendsData.genderLookingFor === "any" &&
+                (userData.genderLookingFor === currentUserFriendsData.gender ||
+                  userData.gender ===
+                    currentUserFriendsData.genderLookingFor)) ||
+              // Check if userData's gender preference is "any" and it matches current user's gender
+              (currentUserFriendsData.genderLookingFor !== "any" &&
+                (userData.gender === "any" ||
+                  currentUserFriendsData.genderLookingFor ===
+                    userData.gender))) &&
             userAge >= minAgeLookingFor &&
             userAge <= maxAgeLookingFor &&
             !requests &&
             !denied &&
             !sentRequest &&
             !inAcceptedRequests &&
-            distance <= 150; // Filter within 150 meters
+            distance <= 850; // Filter within 850 meters
 
           console.log("Is FriendMatch:", isFriendMatch);
 
